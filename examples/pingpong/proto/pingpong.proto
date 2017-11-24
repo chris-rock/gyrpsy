@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package pingpong;
+
+import "google/api/annotations.proto";
+import "google/protobuf/empty.proto";
+
+message PingRequest {
+  string sender = 1;
+}
+
+message PongReply {
+  string message = 1;
+}
+
+message PongReply2 {
+  string message = 1;
+}
+
+service PingPong {
+  rpc Ping (PingRequest) returns (PongReply) {
+    option (google.api.http) = {
+      post: "/ping"
+      body: "*"
+    };
+  };
+
+  rpc NoPing(google.protobuf.Empty) returns (PongReply) {
+    option(google.api.http) = {
+      get:  "/pong"
+    };
+  };
+}
