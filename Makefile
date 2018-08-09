@@ -1,15 +1,27 @@
+.PHONY: bench
 
-example/pingpong/run-server:
-	@go run examples/pingpong/server/main.go
+start/go-gateway:
+	@go run gateway/go/main.go
 
-example/pingpong/run-grpc-client:
-	@go run examples/pingpong/client/grpc/main.go
+start/go-nginx:
+	# run nginx in foreground, ensure config is placed properly eg. /usr/local/etc/nginx/nginx.conf (macos)
+	@nginx -g 'daemon off;'
 
-example/pingpong/run-rest-client:
-	@go run examples/pingpong/client/rest/main.go
+start/service-grpc:
+	@go run services/pp_grpc/main.go
 
-example/pingpong/proto:
-	@./examples/pingpong/proto.sh
+start/service-rest:
+	@go run services/pp_rest/main.go
 
+client/grpc:
+	@go run bench/client/grpc/main.go
+
+client/rest:
+	@go run bench/client/rest/main.go
+
+bench:
+	go test -v -benchmem -run=github.com/chris-rock/gyrpsy/bench -bench .
+	
 unit:
 	@go test -v $(shell go list ./... | grep -v '/vendor/') -cover
+
