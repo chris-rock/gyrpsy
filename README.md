@@ -1,15 +1,10 @@
-# Gyrpsy
+# API Gateway Benchmark
 
-This is an experiment to see how easy we can auto-generate REST APIs. The implementation uses [Golang](https://golang.org/) and [GRPC](https://grpc.io/) as fundamental concepts.
+## Test Setup
 
-## Design
+<a target="_blank" href="docs/setup.png"><img src="docs/setup.png" alt="test setup" title="Test Setup" style="width:60%;"></a>
 
-- opinionated way to write REST services
-- use fast golang server
-- all REST endpoints are auto-generated except for multipart uploads
-- focus on business functionality
-
-The idea is that we use an abstract [protobuf]() description to generate GRPC and REST endpoints. The sample ping pong service looks as following:
+For all setups, we are going to use a very simple GRPC service definition, since the focus is to understand the impact of the service assembly.
 
 ```
 service PingPong {
@@ -28,35 +23,37 @@ service PingPong {
 }
 ```
 
-## Examples
+The service implementation for all setups are the same and located in `/api`. All REST endpoint are auto-generated via the [GRPC Gateway](https://github.com/grpc-ecosystem/grpc-gateway).
 
-### Ping Pong Server
-
-This is a simple server that tests the functionality of the gateway. It demonstrates how a service is put together.
+## Test Results
 
 ```
-# start the pingpong server
-make example/pingpong/run-server
+go test -run=^$ github.com/chris-rock/gyrpsy/bench -bench=. -benchtime 5s
+goos: darwin
+goarch: amd64
+pkg: github.com/chris-rock/gyrpsy/bench
+BenchmarkGoGatewayGRPC/pingpong_proto_ingestion-2         	   30000	    301696 ns/op
+BenchmarkDirectGrpc/pingpong_proto_ingestion-2            	   50000	    151657 ns/op
+BenchmarkNginxTLSGrpc/pingpong_proto_ingestion-2          	   10000	   1972509 ns/op
+BenchmarkNginxGrpc/pingpong_proto_ingestion-2             	   10000	    896205 ns/op
+BenchmarkGoGatewayRest/pingpong_json_ingestion_-2         	    2000	  17835365 ns/op
+BenchmarkDirectRest/pingpong_json_ingestion_-2            	    2000	  18514855 ns/op
+BenchmarkDirectRestHTTP/pingpong_json_ingestion_-2        	    5000	   7968036 ns/op
+BenchmarkNginxRestHTTPS/pingpong_json_ingestion_-2        	    2000	   7949977 ns/op
 
-# run the grpc client
-make example/pingpong/run-grpc-client
-INFO[0000] message:"Hello John"
-
-# run the rest client
-make example/pingpong/run-rest-client
-{"message":"Hello John"}%
-
-# test the custom rest routes
-http --verify=no https://localhost:5000/custom/rest    
-HTTP/1.1 200 OK
-Content-Length: 8
-Content-Type: text/plain; charset=utf-8
-Date: Fri, 24 Nov 2017 10:28:27 GMT
-
-pingpong
-
+PASS
+ok  	github.com/chris-rock/gyrpsy/bench	179.920s
 ```
+
+This benchmark also demonstrates the obvious: Try to avoid additional network hops for your incoming requests if possible.
 
 ## Kudos
 
-The implementation is inspired by [Brandon Philips GRPC example](https://github.com/philips/grpc-gateway-example/blob/master/cmd/serve.go). He explained the concepts in [Take a REST with HTTP/2, Protobufs, and Swagger](https://coreos.com/blog/grpc-protobufs-swagger.html)
+The implementation of the Go Gateway was inspired by [Brandon Philips GRPC example](https://github.com/philips/grpc-gateway-example/blob/master/cmd/serve.go). He explained the concepts in [Take a REST with HTTP/2, Protobufs, and Swagger](https://coreos.com/blog/grpc-protobufs-swagger.html)
+
+
+## References
+
+- [Introducing gRPC Support with NGINX 1.13.10](https://www.nginx.com/blog/nginx-1-13-10-grpc/)
+- [Deploying NGINX Plus as an API Gateway, Part 1](https://www.nginx.com/blog/deploying-nginx-plus-as-an-api-gateway-part-1/)
+- [Deploying NGINX Plus as an API Gateway, Part 2: Protecting Backend Services](https://www.nginx.com/blog/deploying-nginx-plus-as-an-api-gateway-part-2-protecting-backend-services/)
