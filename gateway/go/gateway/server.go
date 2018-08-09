@@ -1,4 +1,4 @@
-package server
+package gateway
 
 import (
 	"crypto/tls"
@@ -42,13 +42,29 @@ type Server struct {
 	tls     *tlsConfig
 }
 
+func LoadCert(cert []byte, key []byte) (*tls.Certificate, *x509.CertPool) {
+	var err error
+
+	pair, err := tls.X509KeyPair(cert, key)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	keyPair := &pair
+	certPool := x509.NewCertPool()
+	ok := certPool.AppendCertsFromPEM([]byte(cert))
+	if !ok {
+		logrus.Fatal(err)
+	}
+	return keyPair, certPool
+}
+
 func NewServer(config Config, opt ...grpc.ServerOption) *Server {
 	s := &Server{}
 	s.Options = &Options{}
 
 	// load certificate from binary
 	s.tls = &tlsConfig{}
-	s.tls.KeyPair, s.tls.CertPool = s.loadCert(config.Cert, config.Key)
+	s.tls.KeyPair, s.tls.CertPool = LoadCert(config.Cert, config.Key)
 
 	// set the cofnig for the tcp listener
 	s.Options.GrpcAddr = fmt.Sprintf("%s:%d", config.Hostname, config.Port)
@@ -82,29 +98,11 @@ func NewServer(config Config, opt ...grpc.ServerOption) *Server {
 	return s
 }
 
-func (s *Server) loadCert(cert []byte, key []byte) (*tls.Certificate, *x509.CertPool) {
-	var err error
-
-	pair, err := tls.X509KeyPair(cert, key)
-	if err != nil {
-		logrus.Fatal(err)
-	}
-	keyPair := &pair
-	certPool := x509.NewCertPool()
-	ok := certPool.AppendCertsFromPEM([]byte(cert))
-	if !ok {
-		logrus.Fatal(err)
-	}
-	return keyPair, certPool
-}
-
 // handle GRPC returns
 func (s *Server) grpcHandlerFunc(grpcServer *grpc.Server, muxHandler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		logrus.Infof("Handle %s", r.RequestURI)
 		// partial check of https://github.com/grpc/grpc-go/blob/master/transport/handler_server.go#L50
 		if r.ProtoMajor >= 2 && strings.Contains(r.Header.Get("Content-Type"), "application/grpc") {
-			logrus.Info("Handle GRPC")
 			grpcServer.ServeHTTP(w, r)
 		} else {
 			muxHandler.ServeHTTP(w, r)

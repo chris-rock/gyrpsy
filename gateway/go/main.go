@@ -1,38 +1,40 @@
 package main
 
 import (
-	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"strings"
 
-	"google.golang.org/grpc"
-
 	"github.com/Sirupsen/logrus"
-	pb "github.com/chris-rock/gyrpsy/examples/pingpong/proto"
-	"github.com/chris-rock/gyrpsy/server"
-	google_protobuf "github.com/golang/protobuf/ptypes/empty"
+	"github.com/chris-rock/gyrpsy/api/pingpong"
+	server "github.com/chris-rock/gyrpsy/gateway/go/gateway"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"golang.org/x/net/context"
+	"google.golang.org/grpc"
 )
-
-// server is used to implement helloworld.GreeterServer.
-type pingPongServer struct{}
-
-// SayHello implements helloworld.GreeterServer
-func (s *pingPongServer) Ping(ctx context.Context, in *pb.PingRequest) (*pb.PongReply, error) {
-	return &pb.PongReply{Message: "Hello " + in.GetSender()}, nil
-}
-
-func (s *pingPongServer) NoPing(ctx context.Context, in *google_protobuf.Empty) (*pb.PongReply, error) {
-	return &pb.PongReply{Message: "HelloPong"}, nil
-}
 
 var port = 5000
 
+func GetCertificates(keyFilename string, certFilename string) (ko []byte, co []byte) {
+	// load key from disk
+	var err error
+	ko, err = ioutil.ReadFile(keyFilename)
+	if err != nil {
+		log.Fatalf("failed to open %s for reading: %s", keyFilename, err)
+		panic("could not load tls key")
+	}
+	co, err = ioutil.ReadFile(certFilename)
+	if err != nil {
+		log.Fatalf("failed to open %s for reading: %s", certFilename, err)
+		panic("could not load tls cert")
+	}
+	return ko, co
+}
+
 func main() {
-	key, cert := server.GetCertificates(fmt.Sprintf("%s:%d", "localhost", port))
+	key, cert := GetCertificates("./cert/key_localhost_5000.pem", "./cert/cert_localhost_5000.pem")
 	s := server.NewServer(server.Config{
 		Hostname: "localhost",
 		Port:     port,
@@ -43,7 +45,7 @@ func main() {
 	// handle all GRPC services
 	grpcHandler := func(opts *server.Options, grpcServer *grpc.Server) (err error) {
 		logrus.Info("Register Ping Pong Server")
-		pb.RegisterPingPongServer(grpcServer, &pingPongServer{})
+		pingpong.RegisterPingPongServer(grpcServer, &pingpong.PingPongServerImpl{})
 		return nil
 	}
 	s.HandleGRPC(grpcHandler)
@@ -55,7 +57,7 @@ func main() {
 
 		pingpongMux := runtime.NewServeMux()
 		ctx := context.Background()
-		err = pb.RegisterPingPongHandlerFromEndpoint(ctx, pingpongMux, opts.GrpcAddr, opts.Dopts)
+		err = pingpong.RegisterPingPongHandlerFromEndpoint(ctx, pingpongMux, opts.GrpcAddr, opts.Dopts)
 		if err != nil {
 			logrus.Infof("cannot serve pingpong api: %v\n", err)
 			return route, err
@@ -66,7 +68,7 @@ func main() {
 	s.Handle("/pingpong/", restHandler)
 
 	// handle optional mux handles
-	swaggerHandler := func(opts *server.Options) (mux *http.ServeMux, err error) {
+	custsomRoute := func(opts *server.Options) (mux *http.ServeMux, err error) {
 		mux = http.NewServeMux()
 		// TODO: read all scopes from pb.Swagger
 		mux.HandleFunc("/rest", func(w http.ResponseWriter, req *http.Request) {
@@ -76,7 +78,7 @@ func main() {
 		return mux, nil
 	}
 
-	s.Handle("/custom/", swaggerHandler)
+	s.Handle("/custom/", custsomRoute)
 
 	// Register reflection service on gRPC server.
 	// reflection.Register(s.GRPC)

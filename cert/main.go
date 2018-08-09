@@ -1,6 +1,11 @@
-package cert
+package main
 
 import (
+	"fmt"
+	"log"
+	"os"
+	"time"
+
 	"bufio"
 	"bytes"
 	"crypto/ecdsa"
@@ -10,13 +15,68 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+
 	"math/big"
 	"net"
-	"strings"
-	"time"
 
-	"github.com/Sirupsen/logrus"
+	"strings"
 )
+
+func CreateCertificates(hostname string, port string) {
+	certFilename := "cert_" + hostname + "_" + port + ".pem"
+	keyFilename := "key_" + hostname + "_" + port + ".pem"
+
+	_, errCert := os.Stat(certFilename)
+	_, errKey := os.Stat(keyFilename)
+
+	if os.IsNotExist(errCert) || os.IsNotExist(errKey) {
+		GenerateCertificates(hostname+":"+port, certFilename, keyFilename)
+	}
+}
+
+func GenerateCertificates(hostname string, certFilename string, keyFilename string) ([]byte, []byte) {
+
+	config := &CertConfig{
+		Host:         hostname,
+		Organization: "Acme Co",
+		ValidFrom:    "",
+		ValidFor:     365 * 24 * time.Hour,
+		IsCA:         false,
+		RsaBits:      2048,
+		EcdsaCurve:   "",
+	}
+
+	fmt.Printf("%v", config)
+
+	co, ko, err := Generate(config)
+	if err != nil {
+		panic(err)
+	}
+
+	certOut, err := os.Create(certFilename)
+	if err != nil {
+		log.Fatalf("failed to open cert.pem for writing: %s", err)
+	}
+
+	// write buffer to file
+	certOut.Write(co)
+
+	certOut.Close()
+	log.Printf("written %s\n", certFilename)
+
+	keyOut, err := os.OpenFile(keyFilename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		log.Printf("failed to open %s for writing:%s", keyFilename, err)
+		return nil, nil
+	}
+
+	// write buffer to file
+	keyOut.Write(ko)
+	keyOut.Close()
+	log.Printf("written %s\n", keyFilename)
+
+	return ko, co
+}
 
 type CertConfig struct {
 	Host         string
@@ -42,10 +102,10 @@ func Generate(config *CertConfig) (co []byte, ko []byte, err error) {
 	case "P521":
 		priv, err = ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
 	default:
-		logrus.Errorf("Unrecognized elliptic curve: %q", config.EcdsaCurve)
+		fmt.Printf("Unrecognized elliptic curve: %q", config.EcdsaCurve)
 	}
 	if err != nil {
-		logrus.Errorf("failed to generate private key: %s", err)
+		fmt.Printf("failed to generate private key: %s", err)
 	}
 
 	var notBefore time.Time
@@ -54,7 +114,7 @@ func Generate(config *CertConfig) (co []byte, ko []byte, err error) {
 	} else {
 		notBefore, err = time.Parse("Jan 2 15:04:05 2006", config.ValidFrom)
 		if err != nil {
-			logrus.Errorf("Failed to parse creation date: %s\n", err)
+			fmt.Printf("Failed to parse creation date: %s\n", err)
 			return nil, nil, err
 		}
 	}
@@ -64,7 +124,7 @@ func Generate(config *CertConfig) (co []byte, ko []byte, err error) {
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
-		logrus.Errorf("failed to generate serial number: %s", err)
+		fmt.Printf("failed to generate serial number: %s", err)
 		return nil, nil, err
 	}
 
@@ -97,7 +157,7 @@ func Generate(config *CertConfig) (co []byte, ko []byte, err error) {
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, publicKey(priv), priv)
 	if err != nil {
-		logrus.Errorf("Failed to create certificate: %s", err)
+		fmt.Printf("Failed to create certificate: %s", err)
 		return nil, nil, err
 	}
 
@@ -138,11 +198,19 @@ func pemBlockForKey(priv interface{}) (*pem.Block, error) {
 	case *ecdsa.PrivateKey:
 		b, err := x509.MarshalECPrivateKey(k)
 		if err != nil {
-			logrus.Errorf("Unable to marshal ECDSA private key: %v", err)
+			fmt.Printf("Unable to marshal ECDSA private key: %v", err)
 			return nil, err
 		}
 		return &pem.Block{Type: "EC PRIVATE KEY", Bytes: b}, nil
 	default:
 		return nil, nil
 	}
+}
+
+func main() {
+	CreateCertificates("localhost", "5000")
+	CreateCertificates("localhost", "5001")
+	CreateCertificates("localhost", "5002")
+	CreateCertificates("localhost", "8443")
+	CreateCertificates("localhost", "8444")
 }
