@@ -9,14 +9,15 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-
-	"github.com/chris-rock/gyrpsy/server"
 )
 
 func main() {
-	// load generate certificate from server to make this easy here
-	// in production, we would lode the file directly
-	_, cert := server.GetCertificates("localhost:2000")
+	// load cert from disk
+	certFilename := "./cert/cert_localhost_5002.pem"
+	cert, err := ioutil.ReadFile(certFilename)
+	if err != nil {
+		log.Fatalf("failed to open %s for reading: %s", certFilename, err)
+	}
 
 	// Setup HTTPS client
 	roots := x509.NewCertPool()
@@ -31,8 +32,8 @@ func main() {
 	transport := &http.Transport{TLSClientConfig: tlsConf}
 
 	// construct client message
-	baseURL, err := url.Parse("https://localhost:5000")
-	rel := &url.URL{Path: "/pingpong/ping"}
+	baseURL, err := url.Parse("https://localhost:5002")
+	rel := &url.URL{Path: "/ping"}
 	u := baseURL.ResolveReference(rel)
 
 	var body = []byte(`{ "sender": "John"}`)
